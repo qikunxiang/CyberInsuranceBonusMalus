@@ -31,6 +31,8 @@
 
 + exp/                contains the scripts to run the experiment (see later)
 
++ tight_subplot/:     used for creating figures with narrow margins
+
 # Instruction to run the experiments
 
 ## Configurations
