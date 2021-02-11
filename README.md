@@ -1,6 +1,7 @@
 # A Bonus-Malus Framework for Cyber Risk Insurance and Optimal Cybersecurity Provisioning
 
 + By Qikun Xiang, Ariel Neufeld, Gareth W. Peters, Ido Nevat, and Anwitaman Datta
++ Article link (arXiV): https://arxiv.org/abs/2102.05568
 
 # Description of files
 
