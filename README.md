@@ -25,7 +25,7 @@
     
 + func/approx/        contains functions to compute the FFT approximation of the LDA model
     - compound_fft_approx.m:           approximates the probability mass function of a discrete compound distribution using the Fast Fourier Transform algorithm
-    - compound_nbin_defense_rand.m:    randomly generates samples from a compound distribution with negative binomial frequence and given severity distribution, when a self-mitigation measure is present
+    - compound_nbin_mitigation_rand.m:    randomly generates samples from a compound distribution with negative binomial frequence and given severity distribution, when a self-mitigation measure is present
     - compound_nbin_rand.m:            randomly generates samples from a compound distribution with negative binomial frequence and given severity distribution
     - compound_specexp_approx.m:       computes a specific form of expectation from the FFT-approximated discrete compound distribution
     - compound_specprob_approx.m:      computes a specific form of probability from the FFT-approximated discrete compound distribution

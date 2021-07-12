@@ -44,15 +44,15 @@ LDA.approx_max = 10 * max(BM.cap);
 LDA.tilt = 20 / (2 ^ LDA.granularity);
 sev_mean = trunc_g_and_h_uppexp(0, LDA.g, LDA.h, LDA.loc, LDA.sca);
 
-Def = struct;
-Def.effect = trunc_g_and_h_invcdf([0.0; 0.7], ...
+Miti = struct;
+Miti.effect = trunc_g_and_h_invcdf([0.0; 0.7], ...
     LDA.g, LDA.h, LDA.loc, LDA.sca) * params.scale;
-Def.cost = [0; 0.5];
+Miti.cost = [0; 0.5];
 
 cost_list = zeros(test_levels, 1);
 detail_list = zeros(test_levels, 6);
 BM_retention_list = zeros(test_levels, length(BM.cap) + 1);
-Def_retention_list = zeros(test_levels, length(Def.effect));
+Miti_retention_list = zeros(test_levels, length(Miti.effect));
 
 sim_num = 1e5;
 cost_samples = zeros(test_levels, sim_num);
@@ -68,15 +68,15 @@ for test_id = 1:test_levels
         params.saved_compound = saved_compound;
     end
     
-    [cost, policy, init, output] = optimal_provision(BM, Def, ...
+    [cost, policy, init, output] = optimal_provision(BM, Miti, ...
         LDA, params);
     
     occupancy = output.occupancy;
-    defstats = output.defstats;
+    mitistats = output.mitistats;
     claimstats = output.claimstats;
     
     cost_list(test_id) = cost(init.BM, init.Ins);
-    detail_list(test_id, 1) = output.mean.defense;
+    detail_list(test_id, 1) = output.mean.mitigation;
     detail_list(test_id, 2) = output.mean.premium;
     detail_list(test_id, 3) = output.mean.penalty;
     detail_list(test_id, 4) = output.mean.loss;
@@ -84,11 +84,11 @@ for test_id = 1:test_levels
     detail_list(test_id, 6) = output.mean.prevented;
     
     BM_retention_list(test_id, :) = sum(output.BMstats, 1);
-    Def_retention_list(test_id, :) = sum(defstats, 1);
+    Miti_retention_list(test_id, :) = sum(mitistats, 1);
     
     % Uncomment the part below to perform Monte-Carlo simulation
     
-    % em_costs = provision_sim(BM, Def, LDA, params, ...
+    % em_costs = provision_sim(BM, Miti, LDA, params, ...
     %     init, policy, sim_num, false, true);
     % cost_samples(test_id, :) = em_costs;
     
@@ -99,5 +99,5 @@ for test_id = 1:test_levels
 end
 
 save('exp/exp_w_BM.mat', 'premium_list', 'detail_list', ...
-    'BM_retention_list', 'Def_retention_list', 'cost_list', ...
-    'BM', 'Def', 'LDA', 'params', 'sev_mean', 'cost_samples');
+    'BM_retention_list', 'Miti_retention_list', 'cost_list', ...
+    'BM', 'Miti', 'LDA', 'params', 'sev_mean', 'cost_samples');

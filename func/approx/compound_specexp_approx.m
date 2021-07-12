@@ -1,7 +1,7 @@
 function v = compound_specexp_approx(atoms, p_cp, ...
     intercept_list, range_list, trunc, cap)
-%COMPOUND_SPECEXP_APPROX Approximate a specitic type of expectation of the
-%compound distribution, with the form E[max{X-intercept,0}I[l_min,l_max]]
+%COMPOUND_SPECEXP_APPROX Approximate a specific type of expectation of the
+%compound distribution, with the form E[max{X-intercept,0}*I[l_min,l_max]]
 % Inputs: 
 %       atoms: the list of atoms in the approximated compound distribution
 %       p_cp: the approximated pmf of the compound distribution

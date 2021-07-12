@@ -1,4 +1,4 @@
-function [cost, policy, init, output] = optimal_provision(BM, Def, ...
+function [cost, policy, init, output] = optimal_provision(BM, Miti, ...
     LDA, params)
 %OPTIMAL_PROVISION Optimal cyber security provisioning with dynamic
 %programming
@@ -13,9 +13,9 @@ function [cost, policy, init, output] = optimal_provision(BM, Def, ...
 %           BM.penalty_out: penalty for withdrawing the contract
 %           BM.penalty_in: penalty for signing the contract late
 %           BM.penalty_rejoin: penalty for rejoining the contract
-%       Def: cyber defense (struct)
-%           Def.cost: cost of each defense level
-%           Def.effect: effect of each defense level
+%       Miti: cyber risk mitigation measures (struct)
+%           Miti.cost: cost of each mitigation measure
+%           Miti.effect: effect of each mitigation measure
 %       LDA: LDA model which is a compound Poisson with g-and-h severity
 %           distribution
 %           LDA.freq_mean: mean of the frequency distribution
@@ -51,15 +51,15 @@ function [cost, policy, init, output] = optimal_provision(BM, Def, ...
 %               contain struct
 %           output.BMstats: the table of statistics about Bonus-Malus
 %               levels
-%           output.defstats: the table of statistics about defense
+%           output.mitistats: the table of statistics about mitigation
 %           output.claimstats: the table of statistics about claim
 %           output.mean: struct containing the expected value of some
 %               quantities
 %           output.saved_compound: struct containing the discrete
 %               approximation of the compound loss distribution with
-%               various defense, can be reused
+%               various mitigation, can be reused
 %           output.risk_premium: the risk premium ignoring Bonus-Malus for
-%               each defense level
+%               each mitigation measure
 
 if size(BM.deductible, 2) == 1
     BM.deductible = repmat(BM.deductible, 1, params.horizon);
@@ -99,30 +99,43 @@ assert(BM_num == size(BM.inactive_rule, 1) ...
     && 2 == size(BM.inactive_rule, 2), ...
     'mis-specified Bonue-Malus inactive rules');
 BM_wait_max = max(max(BM.inactive_rule(:, 1)), 1);
-Def_num = length(Def.cost);
-assert(Def_num == length(Def.effect), 'mis-specified defense');
+Miti_num = length(Miti.cost);
+assert(Miti_num == length(Miti.effect), 'mis-specified mitigation');
 
 if ~isfield(params, 'saved_compound')
     % compute the upper expectations
-    upper_exp = trunc_g_and_h_uppexp(Def.effect, LDA.g, LDA.h, ...
+    upper_exp = trunc_g_and_h_uppexp(Miti.effect, LDA.g, LDA.h, ...
         LDA.loc, LDA.sca, LDA.tol) * LDA.freq_mean;
     
     % compute the approximate compound distribution
+    
+    % compute the discretized version of the severity distribution
+    % (truncated g-and-h)
     atom_num = 2 ^ LDA.granularity;
     [atoms, P_trunc] = trunc_g_and_h_discretize([0, LDA.approx_max], ...
-        atom_num, LDA.g, LDA.h, LDA.loc, LDA.sca, Def.effect, LDA.tol);
+        atom_num, LDA.g, LDA.h, LDA.loc, LDA.sca, Miti.effect, LDA.tol);
     
     if abs(LDA.freq_mean - LDA.freq_var) < eps
+        % no over-dispersion, so use Poisson as the frequency distribution
+        % define the pgf of the Poisson distribution
         freq_pgf = @(s)(exp(LDA.freq_mean * (s - 1)));
     else
+        % use negative binomial as the frequency distribution
+        % define the pgf of the negative binomial distribution
         nbin_p = 1 - LDA.freq_mean / LDA.freq_var;
         nbin_r = LDA.freq_mean * (1 - nbin_p) / nbin_p;
         freq_pgf = @(s)(((1 - nbin_p) ./ (1 - nbin_p * s)) .^ nbin_r);
     end
     
+    % use te FFT approach with exponential tilting to approximate the
+    % distribution function of the compound distribution
     P_cp = compound_fft_approx(P_trunc, freq_pgf, LDA.tilt);
+    % normalize the distribution function by adding the remaining
+    % probability to the right-most atom
     P_cp(end, :) = 1 - sum(P_cp(1:end - 1, :), 1);
     
+    % these outputs can be recycled for future runs if the loss
+    % distribution does not change
     saved_compound = struct;
     saved_compound.atoms = atoms;
     saved_compound.P = P_cp;
@@ -138,10 +151,10 @@ upper_exp = upper_exp * params.scale;
 atoms = atoms * params.scale;
 
 % compute the risk premium
-risk_premium = zeros(Def_num, 1);
-for Def_id = 1:Def_num
-    risk_premium(Def_id) = compound_specexp_approx(atoms, ...
-        P_cp(:, Def_id), 0, [0, inf], BM.deductible(BM.init, 1), ...
+risk_premium = zeros(Miti_num, 1);
+for Miti_id = 1:Miti_num
+    risk_premium(Miti_id) = compound_specexp_approx(atoms, ...
+        P_cp(:, Miti_id), 0, [0, inf], BM.deductible(BM.init, 1), ...
         BM.cap(BM.init, 1));
 end
 
@@ -201,12 +214,12 @@ for t = 1:T
         
         % compute expected cost for solving the provision stage
         % the control to activate insurance
-        expected_cost1 = zeros(Def_num, 1);
+        expected_cost1 = zeros(Miti_num, 1);
         
-        for Def_id = 1:Def_num
-            expected_cost1(Def_id) = discount * costs{t}(BM_lowest, 2) ...
+        for Miti_id = 1:Miti_num
+            expected_cost1(Miti_id) = discount * costs{t}(BM_lowest, 2) ...
                 - sum(compound_specexp_approx(atoms, ...
-                P_cp(:, Def_id), claim_intercept, BM_inverse_ranges, ...
+                P_cp(:, Miti_id), claim_intercept, BM_inverse_ranges, ...
                 BM.deductible(BM_id, T - t + 1), ...
                 BM.cap(BM_id, T - t + 1)));
         end
@@ -216,7 +229,7 @@ for t = 1:T
         % insurance was never active, 2 denotes that insurance is active)
         for Ins_id = 1:BM_wait + 2
             wait_id = Ins_id - 2;
-            expected_future_cost = zeros(Def_num, 2);
+            expected_future_cost = zeros(Miti_num, 2);
             expected_future_cost(:, 1) = expected_cost1;
             % the control to withdraw insurance
             [BM_up, wait_up] = bonusmalus_forget(BM.inactive_rule, ...
@@ -224,7 +237,7 @@ for t = 1:T
             expected_future_cost(:, 2) = discount ...
                 * costs{t}(BM_up, wait_up + 2);
             
-            combined_cost = expected_future_cost + Def.cost + upper_exp;
+            combined_cost = expected_future_cost + Miti.cost + upper_exp;
             combined_cost(:, 1) = combined_cost(:, 1) + BM.premium(BM_id);
             if Ins_id == 2
                 % if insurance is active
@@ -244,24 +257,24 @@ for t = 1:T
             end
             
             % choose the optimal control
-            [min_cost, best_Def] = min(combined_cost(:));
-            if best_Def > Def_num
+            [min_cost, best_Miti] = min(combined_cost(:));
+            if best_Miti > Miti_num
                 best_Ins = 2;
-                best_Def = best_Def - Def_num;
+                best_Miti = best_Miti - Miti_num;
             else
                 best_Ins = 1;
             end
             
             costs{t + 1}(BM_id, Ins_id) = min_cost;
             policy{T - t + 1, 1}{BM_id, Ins_id} = ...
-                struct('Def', best_Def, 'Ins', best_Ins);
+                struct('Miti', best_Miti, 'Ins', best_Ins);
             
             if best_Ins == 1
                 % if the optimal control is to activate insurance, compute
                 % the transition probabilities under the optimal control
                 BM_trans_prob = compound_specprob_approx(atoms, ...
-                    P_cp(:, best_Def), claim_ranges);
-                no_loss_prob = P_cp(1, best_Def);
+                    P_cp(:, best_Miti), claim_ranges);
+                no_loss_prob = P_cp(1, best_Miti);
                 no_claim_prob = 1 - sum(BM_trans_prob);
                 
                 BM_lowest_index = find(BM_claim_trans == BM_lowest, 1);
@@ -284,7 +297,7 @@ for t = 1:T
                 claim_amount_ranges = claim_ranges ...
                     - BM.deductible(BM_id, T - t + 1);
                 mean_claim_amount = sum(compound_specexp_approx(atoms, ...
-                    P_cp(:, best_Def), zeros(size(claim_amount_ranges, ...
+                    P_cp(:, best_Miti), zeros(size(claim_amount_ranges, ...
                     1), 1), claim_amount_ranges, ...
                     BM.deductible(BM_id, T - t + 1), ...
                     BM.cap(BM_id, T - t + 1)));
@@ -309,22 +322,23 @@ end
 
 cost = costs{end};
 
+% this is the only initial state by definition
 init = struct('BM', BM.init, 'Ins', 1);
 
 output.transition = transition;
 
 occupancy_before = cell(T + 1, 1);
 BMstats = zeros(T, BM_num + 1);
-defstats = zeros(T, Def_num);
+mitistats = zeros(T, Miti_num);
 claimstats = zeros(T, 4);
-mean_defense = 0;
+mean_mitigation = 0;
 mean_premium = 0;
 mean_penalty = 0;
 mean_loss = 0;
 mean_claim = 0;
 mean_prevented = 0;
 
-undefended_exp = trunc_g_and_h_uppexp(0, LDA.g, LDA.h, ...
+unmitigated_exp = trunc_g_and_h_uppexp(0, LDA.g, LDA.h, ...
     LDA.loc, LDA.sca, LDA.tol) * params.scale * LDA.freq_mean;
 
 occupancy_before{1} = zeros(BM_num, BM_wait_max + 2);
@@ -356,10 +370,10 @@ for t = 1:T
                     + occupancy_prob_t * prob_list(j);
             end
             
-            % compute defense statistics
+            % compute mitigation statistics
             policy_p = policy{t, 1}{BM_id, Ins_id};
             if ~isempty(policy_p)
-                defstats(t, policy_p.Def) = defstats(t, policy_p.Def) ...
+                mitistats(t, policy_p.Miti) = mitistats(t, policy_p.Miti) ...
                     + occupancy_prob_t;
             end
             
@@ -375,8 +389,8 @@ for t = 1:T
             end
             
             % compute expected values
-            mean_defense = mean_defense + occupancy_prob_t ...
-                * discount ^ (t - 1) * Def.cost(policy_p.Def);
+            mean_mitigation = mean_mitigation + occupancy_prob_t ...
+                * discount ^ (t - 1) * Miti.cost(policy_p.Miti);
             
             if policy_p.Ins == 1
                 mean_premium = mean_premium + occupancy_prob_t ...
@@ -411,10 +425,10 @@ for t = 1:T
             end
             
             mean_loss = mean_loss + occupancy_prob_t ...
-                * discount ^ (t - 1) * upper_exp(policy_p.Def);
+                * discount ^ (t - 1) * upper_exp(policy_p.Miti);
             mean_prevented = mean_prevented + occupancy_prob_t ...
-                * discount ^ (t - 1) * (undefended_exp ...
-                - upper_exp(policy_p.Def));
+                * discount ^ (t - 1) * (unmitigated_exp ...
+                - upper_exp(policy_p.Miti));
         end
     end
 end
@@ -424,10 +438,10 @@ claimstats(:, 4) = max(1 - sum(claimstats(:, 1:3), 2), 0);
 output.costs = costs;
 output.occupancy = occupancy_before;
 output.BMstats = BMstats;
-output.defstats = defstats;
+output.mitistats = mitistats;
 output.claimstats = claimstats;
 output.mean = struct;
-output.mean.defense = mean_defense;
+output.mean.mitigation = mean_mitigation;
 output.mean.premium = mean_premium;
 output.mean.penalty = mean_penalty;
 output.mean.loss = mean_loss;

@@ -1,9 +1,9 @@
-function [costs, output] = provision_sim(BM, Def, LDA, params, init, ...
+function [costs, output] = provision_sim(BM, Miti, LDA, params, init, ...
     policy, sim_num, additional_stats, parallel)
 %PROVISION_SIM Simulation of the cyber security provisioning process
 % Inputs: 
 %       BM: same as in optimal_provision
-%       Def: same as in optimal_provision
+%       Miti: same as in optimal_provision
 %       LDA: same as in optimal_provision
 %       params: same as in optimal_provision
 %       init: initial state (struct)
@@ -20,7 +20,7 @@ function [costs, output] = provision_sim(BM, Def, LDA, params, init, ...
 %           output.occupancy: the empirical occupancy frequencies
 %           output.BMstats: the table of statistics about Bonus-Malus
 %               levels
-%           output.defstats: the table of statistics about defense
+%           output.mitistats: the table of statistics about mitigation
 %           output.claimstats: the table of statistics about claim
 %           output.details: struct containing other detailed distributions
 
@@ -67,8 +67,8 @@ assert(BM_num == size(BM.inactive_rule, 1) ...
     && 2 == size(BM.inactive_rule, 2), ...
     'mis-specified Bonue-Malus inactive rules');
 BM_wait_max = max(max(BM.inactive_rule(:, 1)), 1);
-Def_num = length(Def.cost);
-assert(Def_num == length(Def.effect), 'mis-specified defense');
+Miti_num = length(Miti.cost);
+assert(Miti_num == length(Miti.effect), 'mis-specified mitigations');
 
 assert(T == size(policy, 1) && 2 == size(policy, 2), ...
     'mis-specified policy');
@@ -79,10 +79,10 @@ costs = zeros(sim_num, 1);
 if additional_stats
     occupancy = cell(T + 1, 1);
     BMstats = zeros(T, BM_num + 1);
-    defstats = zeros(T, Def_num);
+    mitistats = zeros(T, Miti_num);
     claimstats = zeros(T, 4);
     details = struct;
-    details.defense = zeros(sim_num, 1);
+    details.mitigation = zeros(sim_num, 1);
     details.premium = zeros(sim_num, 1);
     details.penalty = zeros(sim_num, 1);
     details.loss = zeros(sim_num, 1);
@@ -95,15 +95,15 @@ if additional_stats
 end
 
 % pre-generate losses
-LDA_samples = cell(Def_num, 1);
-LDA_prevented = cell(Def_num, 1);
-for Def_id = 1:Def_num
+LDA_samples = cell(Miti_num, 1);
+LDA_prevented = cell(Miti_num, 1);
+for Miti_id = 1:Miti_num
     sev_gen = @(n)(trunc_g_and_h_rand(n, LDA.g, LDA.h, ...
         LDA.loc, LDA.sca, LDA.tol));
-    [comp_samp, prev_samp] = compound_nbin_defense_rand(sim_num * T, ...
-        LDA.freq_mean, LDA.freq_var, sev_gen, Def.effect(Def_id));
-    LDA_samples{Def_id} = reshape(comp_samp * comp_scale, sim_num, T);
-    LDA_prevented{Def_id} = reshape(prev_samp * comp_scale, sim_num, T);
+    [comp_samp, prev_samp] = compound_nbin_mitigation_rand(sim_num * T, ...
+        LDA.freq_mean, LDA.freq_var, sev_gen, Miti.effect(Miti_id));
+    LDA_samples{Miti_id} = reshape(comp_samp * comp_scale, sim_num, T);
+    LDA_prevented{Miti_id} = reshape(prev_samp * comp_scale, sim_num, T);
 end
 
 if ~parallel
@@ -127,11 +127,11 @@ if ~parallel
             cont_p = policy{t, 1}{state.BM, state.Ins};
             
             % randomly generate loss
-            loss_samp = LDA_samples{cont_p.Def}(sim_id, t);
-            prev_samp = LDA_prevented{cont_p.Def}(sim_id, t);
+            loss_samp = LDA_samples{cont_p.Miti}(sim_id, t);
+            prev_samp = LDA_prevented{cont_p.Miti}(sim_id, t);
             
             % compute the cost
-            cost = cost + cur_discount * (Def.cost(cont_p.Def) ...
+            cost = cost + cur_discount * (Miti.cost(cont_p.Miti) ...
                 + (cont_p.Ins == 1) * BM.premium(state.BM) + loss_samp);
             
             penalty = 0;
@@ -151,12 +151,12 @@ if ~parallel
             cost = cost + cur_discount * penalty;
             
             if additional_stats
-                % update defense statistics
-                defstats(t, cont_p.Def) = defstats(t, cont_p.Def) + 1;
+                % update mitigation statistics
+                mitistats(t, cont_p.Miti) = mitistats(t, cont_p.Miti) + 1;
                 
                 % cost break-down
-                details.defense(sim_id) = details.defense(sim_id) ...
-                    + cur_discount * Def.cost(cont_p.Def);
+                details.mitigation(sim_id) = details.mitigation(sim_id) ...
+                    + cur_discount * Miti.cost(cont_p.Miti);
                 details.premium(sim_id) = details.premium(sim_id) ...
                     + cur_discount * (cont_p.Ins == 1) ...
                     * BM.premium(state.BM);
@@ -275,11 +275,11 @@ else
             cont_p = policy{t, 1}{state.BM, state.Ins};
             
             % randomly generate loss
-            loss_samp = LDA_samples{cont_p.Def}(sim_id, t);
-            prev_samp = LDA_prevented{cont_p.Def}(sim_id, t);
+            loss_samp = LDA_samples{cont_p.Miti}(sim_id, t);
+            prev_samp = LDA_prevented{cont_p.Miti}(sim_id, t);
             
             % compute the cost
-            cost = cost + cur_discount * (Def.cost(cont_p.Def) ...
+            cost = cost + cur_discount * (Miti.cost(cont_p.Miti) ...
                 + (cont_p.Ins == 1) * BM.premium(state.BM) + loss_samp);
             
             penalty = 0;
@@ -361,12 +361,12 @@ if additional_stats
     end
 
     BMstats = BMstats / sim_num;
-    defstats = defstats / sim_num;
+    mitistats = mitistats / sim_num;
     claimstats = claimstats / sim_num;
 
     output.occupancy = occupancy;
     output.BMstats = BMstats;
-    output.defstats = defstats;
+    output.mitistats = mitistats;
     output.claimstats = claimstats;
     output.details = details;
 else

@@ -1,7 +1,8 @@
-function [samp, prevented] = compound_nbin_defense_rand(n, ...
-    rate_mean, rate_var, sev_gen, defense)
-%COMPOUND_POISSON_DEFENSE_RAND Randomly generate samples from the compound 
-%negative binomial distribution with a severity distribution with defense
+function [samp, prevented] = compound_nbin_mitigation_rand(n, ...
+    rate_mean, rate_var, sev_gen, mitigation)
+%COMPOUND_NBIN_MITIGATION_RAND Randomly generate samples from the compound 
+%negative binomial distribution with a severity distribution with the
+%effect of a self-mitigation measure
 % Inputs: 
 %       n: the number of samples
 %       rate_mean: the mean of the negative binomial distribution 
@@ -9,6 +10,7 @@ function [samp, prevented] = compound_nbin_defense_rand(n, ...
 %       sev_gen: a function that randomly generates samples from the
 %       	severity distribution, takes a single input which is the number
 %           of samples, returns the untruncated loss
+%       mitigation: the effect of the mitigation measure
 % Outputs: 
 %       samp: samples in a vector
 %       prevented: prevented losses in a vector
@@ -25,8 +27,8 @@ else
 end
 
 S_raw = sev_gen(sum(N));
-S = max(S_raw - defense, 0);
-S_p = min(S_raw, defense);
+S = max(S_raw - mitigation, 0);
+S_p = min(S_raw, mitigation);
 list_pos = N > 0;
 
 if sum(list_pos) > 0
