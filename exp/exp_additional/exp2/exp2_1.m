@@ -7,7 +7,7 @@ BM = struct;
 cap_base = 1000;
 deductible_base = 0.5;
 
-premium_range = [0, 7];
+premium_range = [0, 6];
 
 premium_list = (premium_range(1):0.005:premium_range(2))';
 test_levels = length(premium_list);
@@ -95,6 +95,7 @@ for test_id = 1:test_levels
     
 end
 
-save('exp/exp_paper/exp_wo_BM.mat', 'premium_list', 'detail_list', ...
-    'BM_retention_list', 'Miti_retention_list', 'cost_list', ...
-    'BM', 'Miti', 'LDA', 'params', 'sev_mean', 'cost_samples');
+save('exp/exp_additional/exp2/exp2_1.mat', 'premium_list', ...
+    'detail_list', 'BM_retention_list', 'Miti_retention_list', ...
+    'cost_list', 'BM', 'Miti', 'LDA', 'params', 'sev_mean', ...
+    'cost_samples');

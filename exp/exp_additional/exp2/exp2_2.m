@@ -1,13 +1,13 @@
 rng(1000);
 
-% No Bonus-Malus.
+% Bonus-Malus has 6 levels.
 
 BM = struct;
 
 cap_base = 1000;
 deductible_base = 0.5;
 
-premium_range = [0, 7];
+premium_range = [0, 6];
 
 premium_list = (premium_range(1):0.005:premium_range(2))';
 test_levels = length(premium_list);
@@ -17,17 +17,22 @@ params.horizon = 20;
 params.discount = 0.95;
 params.scale = 1;
 
-BM.init = 1;
-BM.cap = ones(1, 1) * cap_base;
-BM.rule = BM.cap(1);
-BM.inactive_rule = [0, 1];
-BM.deductible = repmat(ones(1, 1) * deductible_base, 1, ...
+BM.init = 4;
+BM.cap = ones(6, 1) * cap_base;
+BM.rule = [0, 0, 0, 0, 20, BM.cap(1); ...
+    0, 0, 0, 0, 20, BM.cap(2); ...
+    -1, 0, 0, 0, 20, BM.cap(3); ...
+    -1, -1, 0, 0, 20, BM.cap(4); ...
+    -1, -1, -1, 0, 20, BM.cap(5); ...
+    -1, -1, -1, -1, 0, BM.cap(6)];
+BM.inactive_rule = [1, 2; 1, 3; 1, 4; 0, 4; 1, 4; 1, 5];
+BM.deductible = repmat(ones(6, 1) * deductible_base, 1, ...
     params.horizon);
 BM.deductible(:, end) = BM.deductible(:, end) * 10;
 BM.penalty_out = linspace(0, 5, params.horizon) + 3;
 BM.penalty_in = [zeros(1, params.horizon - 5), linspace(0, 3, 5)];
 BM.penalty_rejoin = 3;
-premium_levels = 1;
+premium_levels = [0.6; 0.73; 0.87; 1.0; 1.25; 1.5];
 
 LDA = struct;
 LDA.freq_mean = 0.8;
@@ -86,7 +91,7 @@ for test_id = 1:test_levels
     % Uncomment the part below to perform Monte-Carlo simulation
     
     % em_costs = provision_sim(BM, Miti, LDA, params, ...
-    %     init, policy, sim_num, false, true);
+    %     init, policy, sim_num, false, false);
     % cost_samples(test_id, :) = em_costs;
     
     if isempty(saved_compound)
@@ -95,6 +100,7 @@ for test_id = 1:test_levels
     
 end
 
-save('exp/exp_paper/exp_wo_BM.mat', 'premium_list', 'detail_list', ...
-    'BM_retention_list', 'Miti_retention_list', 'cost_list', ...
-    'BM', 'Miti', 'LDA', 'params', 'sev_mean', 'cost_samples');
+save('exp/exp_additional/exp2/exp2_2.mat', 'premium_list', ...
+    'detail_list', 'BM_retention_list', 'Miti_retention_list', ...
+    'cost_list', 'BM', 'Miti', 'LDA', 'params', 'sev_mean', ...
+    'cost_samples');
