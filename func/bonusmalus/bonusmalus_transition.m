@@ -3,7 +3,7 @@ function new_level = bonusmalus_transition(rule, cur_level, claim)
 % Inputs: 
 %       rule: the Bonus-Malus rule table
 %           rule(i, j) corresponds to the maximum claim for transition 
-%           i -> j
+%           i => j
 %           rule(i, j - 1) corresponds to the minimum claim for such
 %           transition (in the case that j = 1, the minimum is 0)
 %       cur_level: the current Bonus-Malus level

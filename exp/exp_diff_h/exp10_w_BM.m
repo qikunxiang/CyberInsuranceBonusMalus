@@ -36,7 +36,7 @@ LDA = struct;
 LDA.freq_mean = 0.8;
 LDA.freq_var = 0.8;
 LDA.g = 1.8;
-LDA.h = 0.15;
+LDA.h = 0.10;
 LDA.loc = 0;
 LDA.sca = 1;
 LDA.granularity = 20;
@@ -59,6 +59,7 @@ cost_samples = zeros(test_levels, sim_num);
 
 saved_compound = [];
 
+parfor_progress(test_levels);
 for test_id = 1:test_levels
     premium_base = premium_list(test_id);
     BM.premium = premium_levels * premium_base;
@@ -96,8 +97,10 @@ for test_id = 1:test_levels
         saved_compound = output.saved_compound;
     end
     
+    parfor_progress;
 end
+parfor_progress(0);
 
-save('exp/exp_w_BM.mat', 'premium_list', 'detail_list', ...
+save('exp/exp_diff_h/exp10_w_BM.mat', 'premium_list', 'detail_list', ...
     'BM_retention_list', 'Miti_retention_list', 'cost_list', ...
     'BM', 'Miti', 'LDA', 'params', 'sev_mean', 'cost_samples');

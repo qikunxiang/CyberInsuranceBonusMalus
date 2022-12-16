@@ -1,6 +1,6 @@
 rng(1000);
 
-% No Bonus-Malus.
+% Bonus-Malus has 4 levels.
 
 BM = struct;
 
@@ -17,17 +17,20 @@ params.horizon = 20;
 params.discount = 0.95;
 params.scale = 1;
 
-BM.init = 1;
-BM.cap = ones(1, 1) * cap_base;
-BM.rule = BM.cap(1);
-BM.inactive_rule = [0, 1];
-BM.deductible = repmat(ones(1, 1) * deductible_base, 1, ...
+BM.init = 3;
+BM.cap = ones(4, 1) * cap_base;
+BM.rule = [0, 0, 0, BM.cap(1); ...
+    0, 0, 0, BM.cap(2); ...
+    -1, 0, 0, BM.cap(3); ...
+    -1, -1, 0, BM.cap(4)];
+BM.inactive_rule = [1, 2; 1, 3; 0, 3; 1, 3];
+BM.deductible = repmat(ones(4, 1) * deductible_base, 1, ...
     params.horizon);
 BM.deductible(:, end) = BM.deductible(:, end) * 10;
 BM.penalty_out = linspace(0, 5, params.horizon) + 3;
 BM.penalty_in = [zeros(1, params.horizon - 5), linspace(0, 3, 5)];
 BM.penalty_rejoin = 3;
-premium_levels = 1;
+premium_levels = [0.6; 0.8; 1.0; 1.5];
 
 LDA = struct;
 LDA.freq_mean = 0.8;
@@ -56,6 +59,7 @@ cost_samples = zeros(test_levels, sim_num);
 
 saved_compound = [];
 
+parfor_progress(test_levels);
 for test_id = 1:test_levels
     premium_base = premium_list(test_id);
     BM.premium = premium_levels * premium_base;
@@ -93,8 +97,10 @@ for test_id = 1:test_levels
         saved_compound = output.saved_compound;
     end
     
+    parfor_progress;
 end
+parfor_progress(0);
 
-save('exp/exp_wo_BM.mat', 'premium_list', 'detail_list', ...
+save('exp/exp_original/exp_w_BM.mat', 'premium_list', 'detail_list', ...
     'BM_retention_list', 'Miti_retention_list', 'cost_list', ...
     'BM', 'Miti', 'LDA', 'params', 'sev_mean', 'cost_samples');

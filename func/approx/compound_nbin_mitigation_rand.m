@@ -1,8 +1,8 @@
 function [samp, prevented] = compound_nbin_mitigation_rand(n, ...
     rate_mean, rate_var, sev_gen, mitigation)
-%COMPOUND_NBIN_MITIGATION_RAND Randomly generate samples from the compound 
-%negative binomial distribution with a severity distribution with the
-%effect of a self-mitigation measure
+%COMPOUND_POISSON_MITIGATION_RAND Randomly generate samples from the
+%compound negative binomial distribution with a severity distribution with
+%mitigation
 % Inputs: 
 %       n: the number of samples
 %       rate_mean: the mean of the negative binomial distribution 
@@ -10,7 +10,7 @@ function [samp, prevented] = compound_nbin_mitigation_rand(n, ...
 %       sev_gen: a function that randomly generates samples from the
 %       	severity distribution, takes a single input which is the number
 %           of samples, returns the untruncated loss
-%       mitigation: the effect of the mitigation measure
+%       mitigation: the loss reduction effect of mitigation
 % Outputs: 
 %       samp: samples in a vector
 %       prevented: prevented losses in a vector

@@ -36,6 +36,10 @@ if ~isfield(LDA, 'tol')
     LDA.tol = 1e-8;
 end
 
+if ~isfield(LDA, 'lognorm_sev')
+    LDA.lognorm_sev = false;
+end
+
 if ~isfield(params, 'discount')
     params.discount = 1;
 end
@@ -68,11 +72,17 @@ assert(BM_num == size(BM.inactive_rule, 1) ...
     'mis-specified Bonue-Malus inactive rules');
 BM_wait_max = max(max(BM.inactive_rule(:, 1)), 1);
 Miti_num = length(Miti.cost);
-assert(Miti_num == length(Miti.effect), 'mis-specified mitigations');
+assert(Miti_num == length(Miti.effect), 'mis-specified mitigation');
 
 assert(T == size(policy, 1) && 2 == size(policy, 2), ...
     'mis-specified policy');
 
+if ~LDA.lognorm_sev
+    sev_gen = @(n)(trunc_g_and_h_rand(n, LDA.g, LDA.h, ...
+        LDA.loc, LDA.sca, LDA.tol));
+else
+    sev_gen = @(n)(lognorm_rand(n, LDA.mu, LDA.sig2));
+end
 
 costs = zeros(sim_num, 1);
 
@@ -98,8 +108,6 @@ end
 LDA_samples = cell(Miti_num, 1);
 LDA_prevented = cell(Miti_num, 1);
 for Miti_id = 1:Miti_num
-    sev_gen = @(n)(trunc_g_and_h_rand(n, LDA.g, LDA.h, ...
-        LDA.loc, LDA.sca, LDA.tol));
     [comp_samp, prev_samp] = compound_nbin_mitigation_rand(sim_num * T, ...
         LDA.freq_mean, LDA.freq_var, sev_gen, Miti.effect(Miti_id));
     LDA_samples{Miti_id} = reshape(comp_samp * comp_scale, sim_num, T);
@@ -272,15 +280,15 @@ else
             % Provision Stage
             
             % select control for the provision stage
-            cont_p = policy{t, 1}{state.BM, state.Ins};
+            cont_p = policy{t, 1}{state.BM, state.Ins}; %#ok<PFBNS> 
             
             % randomly generate loss
-            loss_samp = LDA_samples{cont_p.Miti}(sim_id, t);
-            prev_samp = LDA_prevented{cont_p.Miti}(sim_id, t);
+            loss_samp = LDA_samples{cont_p.Miti}(sim_id, t); %#ok<PFBNS> 
             
             % compute the cost
             cost = cost + cur_discount * (Miti.cost(cont_p.Miti) ...
-                + (cont_p.Ins == 1) * BM.premium(state.BM) + loss_samp);
+                + (cont_p.Ins == 1) * BM.premium(state.BM) ...
+                + loss_samp); %#ok<PFBNS> 
             
             penalty = 0;
             

@@ -13,9 +13,9 @@ function [cost, policy, init, output] = optimal_provision(BM, Miti, ...
 %           BM.penalty_out: penalty for withdrawing the contract
 %           BM.penalty_in: penalty for signing the contract late
 %           BM.penalty_rejoin: penalty for rejoining the contract
-%       Miti: cyber risk mitigation measures (struct)
-%           Miti.cost: cost of each mitigation measure
-%           Miti.effect: effect of each mitigation measure
+%       Miti: cyber mitigation (struct)
+%           Miti.cost: cost of each mitigation level
+%           Miti.effect: effect of each mitigation level
 %       LDA: LDA model which is a compound Poisson with g-and-h severity
 %           distribution
 %           LDA.freq_mean: mean of the frequency distribution
@@ -26,6 +26,10 @@ function [cost, policy, init, output] = optimal_provision(BM, Miti, ...
 %           LDA.sca: the scale parameter of the g-and-h distribution
 %           LDA.tol: the numerical tolerance for computation with g-and-h
 %           	distribution, default is 1e-8
+%           LDA.lognorm_sev: boolean indicating whether the severity
+%               distribution is changed to log-normal (default is false)
+%           LDA.mu: the mu parameter of the log-normal distribution
+%           LDA.sig2: the sigma^2 parameter of the log-normal distribution
 %           LDA.granularity: specifies the number of atoms (2^granularity)
 %           	in the approximation of the compound distribution
 %           LDA.approx_max: specifies the range beyond BM.cap to
@@ -59,7 +63,7 @@ function [cost, policy, init, output] = optimal_provision(BM, Miti, ...
 %               approximation of the compound loss distribution with
 %               various mitigation, can be reused
 %           output.risk_premium: the risk premium ignoring Bonus-Malus for
-%               each mitigation measure
+%               each mitigation level
 
 if size(BM.deductible, 2) == 1
     BM.deductible = repmat(BM.deductible, 1, params.horizon);
@@ -71,6 +75,10 @@ end
 
 if ~isfield(LDA, 'tol')
     LDA.tol = 1e-8;
+end
+
+if ~isfield(LDA, 'lognorm_sev')
+    LDA.lognorm_sev = false;
 end
 
 if ~isfield(LDA, 'approx_max')
@@ -104,38 +112,36 @@ assert(Miti_num == length(Miti.effect), 'mis-specified mitigation');
 
 if ~isfield(params, 'saved_compound')
     % compute the upper expectations
-    upper_exp = trunc_g_and_h_uppexp(Miti.effect, LDA.g, LDA.h, ...
-        LDA.loc, LDA.sca, LDA.tol) * LDA.freq_mean;
+    if ~LDA.lognorm_sev
+        upper_exp = trunc_g_and_h_uppexp(Miti.effect, LDA.g, LDA.h, ...
+            LDA.loc, LDA.sca, LDA.tol) * LDA.freq_mean;
+    else
+        upper_exp = lognorm_uppexp(Miti.effect, LDA.mu, LDA.sig2) ...
+            * LDA.freq_mean;
+    end
     
     % compute the approximate compound distribution
-    
-    % compute the discretized version of the severity distribution
-    % (truncated g-and-h)
     atom_num = 2 ^ LDA.granularity;
-    [atoms, P_trunc] = trunc_g_and_h_discretize([0, LDA.approx_max], ...
-        atom_num, LDA.g, LDA.h, LDA.loc, LDA.sca, Miti.effect, LDA.tol);
+    if ~LDA.lognorm_sev
+        [atoms, P_trunc] = trunc_g_and_h_discretize( ...
+            [0, LDA.approx_max], atom_num, LDA.g, LDA.h, ...
+            LDA.loc, LDA.sca, Miti.effect, LDA.tol);
+    else
+        [atoms, P_trunc] = lognorm_discretize([0, LDA.approx_max], ...
+            atom_num, LDA.mu, LDA.sig2, Miti.effect);
+    end
     
     if abs(LDA.freq_mean - LDA.freq_var) < eps
-        % no over-dispersion, so use Poisson as the frequency distribution
-        % define the pgf of the Poisson distribution
         freq_pgf = @(s)(exp(LDA.freq_mean * (s - 1)));
     else
-        % use negative binomial as the frequency distribution
-        % define the pgf of the negative binomial distribution
         nbin_p = 1 - LDA.freq_mean / LDA.freq_var;
         nbin_r = LDA.freq_mean * (1 - nbin_p) / nbin_p;
         freq_pgf = @(s)(((1 - nbin_p) ./ (1 - nbin_p * s)) .^ nbin_r);
     end
     
-    % use te FFT approach with exponential tilting to approximate the
-    % distribution function of the compound distribution
     P_cp = compound_fft_approx(P_trunc, freq_pgf, LDA.tilt);
-    % normalize the distribution function by adding the remaining
-    % probability to the right-most atom
     P_cp(end, :) = 1 - sum(P_cp(1:end - 1, :), 1);
     
-    % these outputs can be recycled for future runs if the loss
-    % distribution does not change
     saved_compound = struct;
     saved_compound.atoms = atoms;
     saved_compound.P = P_cp;
@@ -322,7 +328,6 @@ end
 
 cost = costs{end};
 
-% this is the only initial state by definition
 init = struct('BM', BM.init, 'Ins', 1);
 
 output.transition = transition;
@@ -338,8 +343,13 @@ mean_loss = 0;
 mean_claim = 0;
 mean_prevented = 0;
 
-unmitigated_exp = trunc_g_and_h_uppexp(0, LDA.g, LDA.h, ...
-    LDA.loc, LDA.sca, LDA.tol) * params.scale * LDA.freq_mean;
+if ~LDA.lognorm_sev
+    unprevented_exp = trunc_g_and_h_uppexp(0, LDA.g, LDA.h, ...
+        LDA.loc, LDA.sca, LDA.tol) * params.scale * LDA.freq_mean;
+else
+    unprevented_exp = lognorm_uppexp(0, LDA.mu, LDA.sig2) ...
+        * params.scale * LDA.freq_mean;
+end
 
 occupancy_before{1} = zeros(BM_num, BM_wait_max + 2);
 occupancy_before{1}(init.BM, init.Ins) = 1;
@@ -373,8 +383,8 @@ for t = 1:T
             % compute mitigation statistics
             policy_p = policy{t, 1}{BM_id, Ins_id};
             if ~isempty(policy_p)
-                mitistats(t, policy_p.Miti) = mitistats(t, policy_p.Miti) ...
-                    + occupancy_prob_t;
+                mitistats(t, policy_p.Miti) = mitistats(t, ...
+                    policy_p.Miti) + occupancy_prob_t;
             end
             
             % compute claim statistics
@@ -427,7 +437,7 @@ for t = 1:T
             mean_loss = mean_loss + occupancy_prob_t ...
                 * discount ^ (t - 1) * upper_exp(policy_p.Miti);
             mean_prevented = mean_prevented + occupancy_prob_t ...
-                * discount ^ (t - 1) * (unmitigated_exp ...
+                * discount ^ (t - 1) * (unprevented_exp ...
                 - upper_exp(policy_p.Miti));
         end
     end
